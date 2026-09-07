@@ -13,12 +13,14 @@ git clone https://github.com/willtraweek/improve.git
 cd improve
 python3 scripts/install.py          # preview
 python3 scripts/install.py --apply  # replace the prior version
-python3 scripts/install.py --check  # verify the installed snapshot
+python3 scripts/install.py --check  # verify the installation links
 ```
 
-The installer copies only `skills/improve/` to `~/.agents/skills/improve`, creates Claude and Grok links, removes the separate legacy Codex copy, and removes Improve's obsolete skills CLI tracking entry. Old payloads are archived outside skill discovery under `~/.local/state/improve/backups/`. Other skills and their tracking entries are preserved. Failed filesystem operations trigger rollback.
+The installer links `~/.agents/skills/improve` to this checkout's `skills/improve/`, creates Claude and Grok links through that shared path, removes the separate legacy Codex copy, and removes Improve's obsolete skills CLI tracking entry. Old payloads are archived outside skill discovery under `~/.local/state/improve/backups/`. Other skills and their tracking entries are preserved. Failed filesystem operations trigger rollback.
 
-Codex discovers the shared directory directly; Claude and Grok use their personal skill directories. The installed snapshot is independent of this checkout. Rerun the installer after updating the fork, then start fresh agent sessions to reload skills. `--home /path/to/test-home` supports isolated installation.
+Codex discovers the shared directory directly; Claude and Grok use their personal skill directories. Edits and Git updates in this checkout become available through all three paths without reinstalling. Keep the checkout in place; if you move it, rerun the installer from its new location. Start fresh agent sessions to reload instructions already cached in a session. `--home /path/to/test-home` supports isolated installation.
+
+To get updates from your fork, run `git pull --ff-only` in this checkout. The symlink follows local files; it does not fetch Git changes automatically.
 
 Alternatively, install through the [Agent Skills CLI](https://github.com/vercel-labs/skills):
 

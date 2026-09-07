@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install one Improve snapshot for Codex, Claude Code, and Grok (Python 3)."""
+"""Link this Improve checkout into Codex, Claude Code, and Grok (Python 3)."""
 
 import argparse
 import json
@@ -18,30 +18,17 @@ def exists(path):
     return path.exists() or path.is_symlink()
 
 
-def inventory(path):
-    """Compare complete payloads, including removed references and hidden files."""
-    result = {}
-    for item in sorted(path.rglob("*")):
-        relative = str(item.relative_to(path))
-        if item.is_symlink():
-            result[relative] = ("link", os.readlink(item))
-        elif item.is_file():
-            result[relative] = ("file", item.read_bytes())
-        elif item.is_dir():
-            result[relative] = ("dir",)
-        else:
-            raise ValueError(f"Unsupported file type: {item}")
-    return result
-
-
 def plan(home):
     if not (SOURCE / "SKILL.md").is_file():
         raise ValueError(f"Missing source skill: {SOURCE / 'SKILL.md'}")
     canonical = home / ".agents/skills/improve"
+    source = SOURCE.resolve()
+    managed = [home / host / "skills/improve" for host in (".agents", ".claude", ".grok", ".codex")]
+    if any(source == path or path in source.parents or source in path.parents for path in managed):
+        raise ValueError("Source checkout must be separate from managed installation paths")
     actions = []
-    if (canonical.is_symlink() or not canonical.is_dir()
-            or inventory(canonical) != inventory(SOURCE)):
-        actions.append(("copy", canonical, None))
+    if not canonical.is_symlink() or os.readlink(canonical) != str(source):
+        actions.append(("link", canonical, str(source)))
     for host in (".claude", ".grok"):
         destination = home / host / "skills/improve"
         link = os.path.relpath(canonical, destination.parent)
@@ -51,7 +38,7 @@ def plan(home):
     if exists(legacy):
         actions.append(("remove", legacy, None))
 
-    # This local snapshot is no longer managed by the upstream skills CLI.
+    # This checkout is managed through Git rather than the upstream skills CLI.
     for relative in (".local/state/skills/.skill-lock.json", ".agents/.skill-lock.json"):
         lock = home / relative
         if not exists(lock):
@@ -94,12 +81,10 @@ def apply(home, actions):
     completed = []
     with tempfile.TemporaryDirectory(prefix="stage-", dir=state) as temporary:
         staging = Path(temporary)
-        # Finish all copying and serialization before touching active skills.
+        # Stage links and serialized metadata before touching active skills.
         for index, (kind, _, content) in enumerate(actions):
             staged = staging / str(index)
-            if kind == "copy":
-                shutil.copytree(SOURCE, staged, symlinks=True)
-            elif kind == "link":
+            if kind == "link":
                 staged.symlink_to(content, target_is_directory=True)
             elif kind == "untrack":
                 staged.write_text(content)
@@ -138,8 +123,9 @@ def main():
         if not actions:
             print("Improve is current for Codex, Claude Code, and Grok.")
             return 0
-        for kind, destination, _ in actions:
-            print(f"{kind:7} {destination}")
+        for kind, destination, content in actions:
+            target = f" -> {content}" if kind == "link" else ""
+            print(f"{kind:7} {destination}{target}")
         if args.apply:
             apply(home, actions)
             print("Installed Improve for Codex, Claude Code, and Grok.")

@@ -37,7 +37,7 @@ The normal audit used to explicitly load the entrypoint and playbook (28,435 byt
 ## Validation
 
 - Skill Creator's frontmatter/scaffold validator passed; all skill reference links and Claude plugin JSON parsed successfully.
-- Seven installer tests passed: preview/check are read-only; fresh/repeated install; migration and obsolete-reference removal; preservation of unrelated files/lock entries; safe replacement of symlinks; malformed lock and symlinked-root rejection; rollback after a simulated installation failure.
+- Nine installer tests passed: preview/check are read-only; fresh/repeated install; migration and obsolete-reference removal; preservation of unrelated files/lock entries; safe replacement of symlinks; malformed lock and symlinked-root rejection; rollback after a simulated installation failure; migration from an identical snapshot; immediate propagation of source edits, additions, and deletions through all three hosts without reinstalling.
 - A fresh agent used the skill on a disposable copy of `tests/fixtures/stockroom`, with the request: “Improve this small codebase with a quick audit. Choose the highest-value finding yourself and write one implementation plan for another agent. Keep the existing API decisions.” It found the negative-reservation defect, preserved zero-unit preview behavior and the single-process decision, ran the 3 passing baseline tests, and added only a plan and index. Tracked source remained unchanged.
 - Independent contract review caught missing Git authority in standalone plans; the contract was corrected. A subsequent `review-plan` pass added the explicit authorization boundary while keeping status TODO.
 - A second fresh agent received only the resulting plan and fixture, with explicit authorization to implement in that disposable copy. It needed no additional context. The added negative-reservation regression failed before the fix (4 tests, 2 failing subtests); after the guard and exact-stock test, all 5 tests passed. It preserved unknown-SKU precedence and the existing insufficient-stock behavior. No commit, publication, or integration was performed.
@@ -45,7 +45,7 @@ The normal audit used to explicitly load the entrypoint and playbook (28,435 byt
 
 These exercises covered quick assessment, automatic selection when authorized, plan writing/review, and a standalone execution handoff. They did not exercise every mode, live issue publication, or the complete `execute` orchestration. To repeat the behavioral exercise, copy the fixture to a disposable repository, initialize/commit its baseline, and give a fresh agent the request above and the skill path. Give another fresh agent only the resulting plan and a separate copy of that baseline.
 
-Structural checks and small behavioral exercises cannot establish cross-model quality or performance. No Claude/Grok model A/B benchmark was run. The installer verifies discovery paths and exact payloads separately from model behavior.
+Structural checks and small behavioral exercises cannot establish cross-model quality or performance. No Claude/Grok model A/B benchmark was run. Installation checks are separate from model behavior.
 
 ## Installation design
 
@@ -53,4 +53,6 @@ Codex's documented shared skill root is `~/.agents/skills`; duplicate names can 
 
 Claude uses `~/.claude/skills`. [Claude skill documentation](https://code.claude.com/docs/en/skills)
 
-The installed Grok CLI's bundled documentation and `grok inspect --json` confirm personal/shared discovery, and inspection identifies the Improve path under `~/.grok/skills`. Claude and Grok retain links to the canonical snapshot. The installer backs up both old copies outside discovery, removes only Improve's stale skills CLI lock entry, and does not modify unrelated host configuration.
+The installed Grok CLI's bundled documentation and `grok inspect --json` confirm personal/shared discovery, and inspection identifies the Improve path under `~/.grok/skills`. Claude and Grok link through the shared path, which now links directly to this checkout's `skills/improve/`. The installer backs up replaced copies outside discovery, removes only Improve's stale skills CLI lock entry, and does not modify unrelated host configuration.
+
+The initial installation used an independent snapshot. At the user's request, it was changed to symlinks so local edits and pulled updates propagate without reinstalling. The checkout must remain available; existing sessions may need restarting to reload cached instructions. Symlinks do not fetch remote updates.
