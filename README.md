@@ -1,109 +1,67 @@
 # improve
 
-An agent skill that audits any codebase and writes implementation plans for other agents to execute.
+A lean fork of [shadcn/improve](https://github.com/shadcn/improve): audit a codebase, judge what is worth changing, and write plans another agent can execute independently. The plan is the product.
 
-The idea: use your most capable model for the part where intelligence compounds — understanding the codebase, judging what's worth doing, writing the spec — and hand execution to cheaper models. The skill never implements anything itself. The plan is the product.
+This fork keeps the advisor workflow and every invocation mode, removes generic audit tutorials and repeated rules, and replaces the long plan template with a compact handoff contract. It trusts the model's judgment about depth, delegation, and implementation detail.
 
-```
-you          →  /improve                    (expensive model, advises)
-plans/       →  001-fix-n-plus-one.md       (self-contained specs)
-other agent  →  implements, tests, ships    (cheap model, executes)
-```
+## Install for Claude Code, Codex, and Grok
 
-## Install
+Requires Python 3.9+ and a Unix-like filesystem.
 
-```bash
-npx skills add shadcn/improve
-```
-
-Works in any agent that supports [Agent Skills](https://agentskills.io) format. The plans it writes are plain markdown, so any agent (or human) can pick them up.
-
-## Usage
-
-```
-/improve                        full audit → prioritized findings → plans
-/improve quick                  cheap pass: hotspots, top findings only
-/improve deep                   exhaustive: every package, every category
-/improve security               focused audit (also: perf, tests, bugs, ...)
-/improve branch                 audit only what the current branch changes
-/improve next                   feature suggestions — where to take the project
-/improve plan <description>     skip the audit, spec one thing
-/improve review-plan <file>     critique and tighten an existing plan
-/improve execute <plan>         dispatch a cheaper executor, review its work
-/improve reconcile              refresh the backlog: verify, unblock, retire
-/improve ... --issues           also publish plans as GitHub issues
+```sh
+git clone https://github.com/willtraweek/improve.git
+cd improve
+python3 scripts/install.py          # preview
+python3 scripts/install.py --apply  # replace the prior version
+python3 scripts/install.py --check  # verify the installed snapshot
 ```
 
-## How to use
+The installer copies only `skills/improve/` to `~/.agents/skills/improve`, creates Claude and Grok links, removes the separate legacy Codex copy, and removes Improve's obsolete skills CLI tracking entry. Old payloads are archived outside skill discovery under `~/.local/state/improve/backups/`. Other skills and their tracking entries are preserved. Failed filesystem operations trigger rollback.
 
-A typical first run, start to finish:
+Codex discovers the shared directory directly; Claude and Grok use their personal skill directories. The installed snapshot is independent of this checkout. Rerun the installer after updating the fork, then start fresh agent sessions to reload skills. `--home /path/to/test-home` supports isolated installation.
 
-1. Open your agent in the repo and run `/improve` (or `/improve quick` to keep it cheap).
-2. It maps the repo, audits it, and comes back with a findings table. Reply with the ones you want planned — "plan 1, 3 and 5".
-3. Plans land in `plans/` — one file each, plus an index with the recommended order. Read them; they're meant to be reviewed.
-4. Hand a plan to any agent ("implement plans/001-*.md"), or let the skill run it: `/improve execute 001`. It dispatches a cheaper model in an isolated worktree, reviews the diff against the plan, and reports back with a verdict. Merging stays up to you.
-5. Next session, run `/improve reconcile` to clean up the backlog: verify what landed, refresh what drifted, unblock what got stuck.
+Alternatively, install through the [Agent Skills CLI](https://github.com/vercel-labs/skills):
 
-Before a PR, `/improve branch` does the same thing scoped to just what your branch changes.
-
-## Example
-
-A run against [shadcn/ui](https://github.com/shadcn-ui/ui) came back with findings like:
-
-```
-| # | Finding                                        | Category  | Effort | Confidence |
-|---|------------------------------------------------|-----------|--------|------------|
-| 1 | shadow-config duplicated in search.ts/view.ts, | tech-debt | M      | HIGH       |
-|   | copies already drifted (TODO at search.ts:31)  |           |        |            |
-| 2 | O(n²) icon migration (migrate-icons.ts:168)    | perf      | S      | HIGH       |
+```sh
+npx skills add willtraweek/improve
 ```
 
-…and rejected a few, with reasons recorded so they don't come back next run:
+That uses the CLI's own host selection and update management; the local installer above additionally migrates the old installation layout. Use one method for ongoing updates.
 
+## Use
+
+In Claude Code and Grok, invoke `/improve`. In Codex, invoke `$improve`.
+
+| Request | Result |
+|---|---|
+| `improve` | Evidence-based audit, prioritized findings, then selected plans |
+| `improve quick` / `improve deep` | Narrow hotspots / broader coverage |
+| `improve security` (or another focus) | Focused assessment |
+| `improve branch` | Branch changes and callers, with introduced vs. pre-existing findings |
+| `improve next` / `features` / `roadmap` | Grounded product options |
+| `improve plan <description>` | Investigate and specify one change |
+| `improve review-plan <file>` | Verify and tighten a plan against current code |
+| `improve execute <plan>` | Separate executor in a worktree, followed by advisor review |
+| `improve reconcile` | Refresh evidence, dependencies, and completion status |
+| `improve ... --issues` | Publish selected plans to GitHub with explicit authorization |
+
+The advisor writes only plan documents. Plans include evidence, scope, decisions, an execution sequence, actual verification commands, and a baseline for detecting drift. Existing plan backlogs are reconciled. Product directions stay separate from defects.
+
+Give the advisor your desired scope and authority: “Audit this repo and choose the top two improvements to plan” permits it to select without another check-in. An ordinary audit asks which findings should become plans.
+
+The [upstream example](examples/001-extract-shadow-config-resolution.md) remains as provenance. It illustrates a detailed handoff; its older rigid template and status conventions are not requirements for this fork.
+
+## Size and validation
+
+The installed skill contains one entrypoint and two references, loaded when planning or following through. Research notes, tests, examples, and installer code are not installed as prompt resources.
+
+See [modernization notes](docs/modernization.md) for primary sources, measurements, design decisions, and validation limits.
+
+```sh
+python3 scripts/measure.py
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v
 ```
-- [SEC-01] https_proxy env var "SSRF": by-design — standard proxy convention,
-  every CLI honors it. Not a finding.
-```
-
-Picking #1 produced [this plan](./examples/001-extract-shadow-config-resolution.md) — current code excerpted, exact steps, the repo's own test/lint commands as verification gates, and STOP conditions for when reality doesn't match.
-
-## How it works
-
-**Recon.** Maps the repo: stack, conventions, and the exact build/test/lint commands — these become verification gates in every plan. It also ingests intent and design docs when present — ADRs (`docs/adr/`), PRDs, `CONTEXT.md`, `DESIGN.md`, `PRODUCT.md` — so decided tradeoffs aren't re-flagged as findings, direction suggestions stay grounded in stated product intent, and plans speak the repo's own vocabulary. Composes with any repo that already maintains these docs.
-
-**Audit.** Fans out parallel subagents across nine categories: correctness, security, performance, test coverage, tech debt, dependencies & migrations, DX, docs, and direction (feature suggestions — every one must cite evidence from the repo itself, no generic idea-slop). Every finding carries `file:line` evidence, impact, effort, and confidence.
-
-**Vet.** Subagents over-report, so the advisor re-reads every cited location itself before showing you anything — false positives get dropped, wrong attributions get corrected, rejections get recorded.
-
-**Prioritize.** Findings land in a table ordered by leverage (impact ÷ effort, weighted by confidence). You pick what becomes plans.
-
-**Plan.** One file per selected finding, written into `plans/` with an index, priority order, and dependency graph.
-
-## What makes the plans executable
-
-Plans are written for the weakest plausible executor — a model that has never seen the advisor session and may be much smaller. Three properties carry that:
-
-- **Self-contained.** All context is inlined: exact file paths, current-state code excerpts, repo conventions with an exemplar file, verified commands. No "as discussed above."
-- **Verification gates.** Every step ends with a command and its expected output. Done criteria are machine-checkable. The executor never has to judge whether it succeeded.
-- **Hard boundaries.** Explicit out-of-scope lists, and STOP conditions — "if X, stop and report" — instead of letting a small model improvise when reality doesn't match the plan.
-
-Each plan also stamps the git commit it was written against, so executors run a mechanical drift check before touching anything.
-
-## Closing the loop
-
-Plans aren't fire-and-forget:
-
-- **`execute <plan>`** spawns a cheaper executor subagent in an isolated git worktree, hands it the plan, then reviews the result like a tech lead — re-runs every done criterion, checks scope compliance, reads the diff against intent. Verdict: approve (merging stays your call), send back for revision (max 2 rounds), or block and refine the plan.
-- **`reconcile`** processes what happened since: verifies DONE plans still hold, investigates BLOCKED ones and rewrites around the obstacle, refreshes drifted plans, retires findings that got fixed independently.
-- **`--issues`** publishes plans as GitHub issues — same self-contained body, so any agent or human can pick them up where work already lives.
-
-## Hard rules
-
-- Never modifies source code itself. The only writes go to `plans/`; executors edit only in disposable worktrees, and merging is always yours.
-- Never runs commands that mutate your working tree — read, search, and read-only analysis only.
-- Never reproduces secret values. Locations and credential types only, rotation always recommended.
-- Asked to implement? It declines and points at the plan (or offers `execute`).
 
 ## License
 
-MIT © shadcn
+MIT © shadcn. Fork maintained by willtraweek; upstream history and attribution are preserved.
